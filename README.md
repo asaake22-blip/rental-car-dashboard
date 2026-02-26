@@ -83,30 +83,6 @@ npm run dev
 
 ブラウザで http://localhost:3000 にアクセス。
 
-### よく使うコマンド
-
-```bash
-# 開発サーバー起動
-npm run dev
-
-# PostgreSQL起動 / 停止
-docker-compose up -d
-docker-compose down
-
-# DBスキーマ変更後のマイグレーション
-npx prisma migrate dev --name <変更名>
-
-# Prisma Studio（DBのGUI閲覧）
-npx prisma studio
-
-# テスト実行
-npm test              # ウォッチモード
-npm run test:run      # 1回実行（CI用）
-npm run test:coverage # カバレッジ付き
-
-# ビルド確認
-npm run build
-```
 
 ## プロジェクト構成
 
@@ -211,19 +187,19 @@ rental-car/
 - フィルタ（会計年度・月・エリア・除外条件トグル）
 - **PDF出力**（html2canvas-pro + jsPDF、A4横向き、フィルタ条件付きヘッダー）
 
-### 取引先管理（Phase 11）
+### 取引先管理
 - **取引先マスタ CRUD**（取引先コード自動採番 `AC-00001`、法人/個人区分）
 - 支払条件管理（締日・支払月オフセット・支払日 → dueDate 自動計算）
 - MoneyForward パートナー連携（`mfPartnerId` / `mfPartnerCode`）
 - 取引先詳細に関連見積書・請求書・予約一覧
 
-### 見積書管理（Phase 11）
+### 見積書管理
 - **見積書 CRUD**（見積書コード自動採番 `QT-00001`、ステータス遷移: 下書き→送付→承諾/不成立）
 - **明細行エディタ**（品名・数量・単価・税率 → 金額自動計算、行追加/削除）
 - 取引先選択 → 宛名自動セット
 - 承諾済み見積書 → 予約に自動変換（車両クラス・日程・営業所を引き継ぎ）
 
-### 請求書管理（Phase 10-11）
+### 請求書管理
 - **請求書 CRUD**（請求書番号自動採番 `IV-00001`、ステータス: 下書き→発行→入金済/延滞）
 - **明細行エディタ**（見積書と同じ共通コンポーネント）
 - 取引先選択 + 消込情報セクション（入金リンク・消込金額・残額サマリ）

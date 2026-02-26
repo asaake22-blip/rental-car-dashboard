@@ -1,0 +1,754 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum Role {
+  ADMIN
+  MANAGER
+  MEMBER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ImportStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum VehicleStatus {
+  IN_STOCK
+  LEASED
+  RENTED
+  MAINTENANCE
+  RETIRED
+}
+
+enum ReservationStatus {
+  RESERVED    // 予約確定
+  CONFIRMED   // 配車確定
+  DEPARTED    // 出発済み
+  RETURNED    // 帰着済み
+  SETTLED     // 精算完了
+  CANCELLED   // キャンセル
+  NO_SHOW     // ノーショー
+}
+
+enum InvoiceStatus {
+  DRAFT       // 下書き
+  ISSUED      // 発行済み
+  PAID        // 入金済み
+  OVERDUE     // 期日超過
+  CANCELLED   // 取消
+}
+
+enum RateType {
+  HOURLY      // 時間制（6h/12h/24h）
+  DAILY       // 日数制（1日単位）
+  OVERNIGHT   // 泊数制（1泊2日～）
+}
+
+enum LeaseStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+enum InspectionType {
+  REGULAR
+  LEGAL
+  SHAKEN
+  MAINTENANCE
+}
+
+enum LesseeType {
+  INDIVIDUAL
+  CORPORATE
+}
+
+enum PaymentCategory {
+  BANK_TRANSFER    // 銀行振込
+  CASH             // 現金
+  CREDIT_CARD      // クレジットカード
+  ELECTRONIC_MONEY // 電子マネー（Suica, PASMO 等）
+  QR_PAYMENT       // QR決済（PayPay, LINE Pay 等）
+  CHECK            // 小切手
+  OTHER            // その他
+}
+
+enum PaymentStatus {
+  UNALLOCATED          // 未消込
+  PARTIALLY_ALLOCATED  // 一部消込
+  FULLY_ALLOCATED      // 全額消込
+}
+
+enum TerminalType {
+  CREDIT_CARD      // クレジットカード端末
+  ELECTRONIC_MONEY // 電子マネー端末
+  QR_PAYMENT       // QRコード端末
+  MULTI            // マルチ決済端末
+}
+
+enum TerminalStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum AccountType {
+  CORPORATE   // 法人
+  INDIVIDUAL  // 個人
+}
+
+enum QuotationStatus {
+  DRAFT       // 下書き
+  SENT        // 送付済み
+  ACCEPTED    // 承諾
+  EXPIRED     // 期限切れ
+  REJECTED    // 不成立
+}
+
+// ============================================================
+// ユーザー（将来の認証用、現時点ではスタブ）
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(MEMBER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ============================================================
+// マスタテーブル
+// ============================================================
+
+/// 会社マスタ ← (dt)会社マスタ
+model Company {
+  customerCompanyCode String @id
+  companyNameKana     String
+  officialName        String
+  shortName           String
+  channelCode         String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+/// 顧客マスタ ← (dt)顧客マスタ
+model Customer {
+  id                         String  @id @default(cuid())
+  area                       String?
+  dealer                     String?
+  channelCode                String
+  departmentCode             String
+  companyCode                String
+  customerCompanyCode        String
+  departmentCustomerCode     String
+  departmentCustomerNameKana String
+  departmentCustomerName     String
+  shortName                  String
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@unique([departmentCode, customerCompanyCode])
+  @@index([companyCode])
+  @@index([area])
+}
+
+// ============================================================
+// 取引先管理
+// ============================================================
+
+/// 取引先（法人・個人）
+model Account {
+  id                 String        @id @default(cuid())
+  accountCode        String        @unique  /// AC-NNNNN 形式、サービス層で自動採番
+  accountName        String
+  accountNameKana    String?
+  accountType        AccountType
+  closingDay         Int?          /// 締日（1-31）
+  paymentMonthOffset Int?          @default(1) /// 支払月オフセット（締月から何ヶ月後か）
+  paymentDay         Int?          /// 支払日（1-31、null=月末）
+  paymentTermsLabel  String?       /// 支払条件の表示ラベル（例: 月末締め翌月末払い）
+  mfPartnerId        String?       @unique  /// MFクラウド取引先ID
+  mfPartnerCode      String?       /// MFクラウド取引先コード
+  syncedAt           DateTime?     /// MF最終同期日時
+  zipCode            String?
+  address            String?
+  phone              String?
+  email              String?
+  legacyCompanyCode  String?       @unique  /// Company テーブル移行用
+  quotations         Quotation[]
+  invoices           Invoice[]
+  reservations       Reservation[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([accountType])
+  @@index([accountName])
+}
+
+/// 日報ディーラー ← (dt)日報ディーラー
+model DailyReportDealer {
+  companyCode String @id
+  companyName String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// 担当営業マスタ ← (dt)担当営業マスタ（月別列を正規化）
+model SalesRepAssignment {
+  id             String  @id @default(cuid())
+  customerCode   String
+  companyCode    String
+  departmentCode String
+  clientName     String
+  storeName      String
+  officeName     String
+  isNewThisTerm  Boolean @default(false)
+  note           String?
+  fiscalYear     Int
+  month          Int
+  salesRepName   String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([customerCode, fiscalYear, month])
+  @@index([clientName, storeName, officeName])
+  @@index([salesRepName])
+}
+
+// ============================================================
+// 営業所マスタ
+// ============================================================
+
+/// 営業所マスタ
+model Office {
+  id                 String            @id @default(cuid())
+  officeName         String            @unique
+  area               String?
+  vehicles           Vehicle[]
+  parkingLots        ParkingLot[]
+  terminals          PaymentTerminal[]
+  pickupReservations  Reservation[]     @relation("pickupOffice")
+  returnReservations  Reservation[]     @relation("returnOffice")
+  quotationPickups    Quotation[]       @relation("quotationPickup")
+  quotationReturns    Quotation[]       @relation("quotationReturn")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+// ============================================================
+// 取引テーブル
+// ============================================================
+
+// ============================================================
+// 目標テーブル（月別列を正規化）
+// ============================================================
+
+/// 予約目標
+model ReservationTarget {
+  id          String @id @default(cuid())
+  clientName  String
+  storeName   String
+  officeName  String
+  fiscalYear  Int
+  month       Int
+  targetCount Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([clientName, storeName, officeName, fiscalYear, month])
+  @@index([fiscalYear, month])
+}
+
+/// 売上目標 ← (dt)売上目標
+model SalesTarget {
+  id           String @id @default(cuid())
+  clientName   String
+  storeName    String
+  officeName   String
+  fiscalYear   Int
+  month        Int
+  targetAmount Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([clientName, storeName, officeName, fiscalYear, month])
+  @@index([fiscalYear, month])
+}
+
+// ============================================================
+// 管理テーブル
+// ============================================================
+
+/// インポート履歴
+model ImportHistory {
+  id           String       @id @default(cuid())
+  fileName     String
+  sheetName    String?
+  recordCount  Int
+  status       ImportStatus
+  errorLog     String?
+  importedAt   DateTime     @default(now())
+  importedById String?
+}
+
+/// 除外条件 ← (営1)条件
+model ExclusionRule {
+  id          String  @id @default(cuid())
+  ruleType    String
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@unique([ruleType, value])
+}
+
+// ============================================================
+// 車両管理
+// ============================================================
+
+/// 車両マスタ
+model Vehicle {
+  id             String              @id @default(cuid())
+  vehicleCode    String              @unique /// VH-00001 形式、サービス層で自動採番
+  plateNumber    String?
+  vin            String?             @unique
+  maker          String
+  modelName      String
+  year           Int
+  color          String?
+  mileage        Int                 @default(0)
+  status         VehicleStatus       @default(IN_STOCK)
+  vehicleClassId String?
+  vehicleClass   VehicleClass?       @relation(fields: [vehicleClassId], references: [id])
+  officeId       String
+  office         Office              @relation(fields: [officeId], references: [id])
+  parkingSpotId  String?             @unique
+  parkingSpot    ParkingSpot?        @relation(fields: [parkingSpotId], references: [id])
+  leaseLines     LeaseContractLine[]
+  inspections    VehicleInspection[]
+  reservations   Reservation[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([officeId])
+  @@index([status])
+  @@index([vehicleClassId])
+}
+
+/// リース契約（契約書ヘッダー）
+model LeaseContract {
+  id                 String              @id @default(cuid())
+  contractNumber     String              @unique
+  externalId         String?             @unique
+  lesseeType         LesseeType
+  lesseeCompanyCode  String?
+  lesseeName         String
+  startDate          DateTime
+  endDate            DateTime
+  status             LeaseStatus         @default(ACTIVE)
+  note               String?
+  lines              LeaseContractLine[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([status])
+  @@index([endDate])
+  @@index([lesseeName])
+}
+
+/// リース契約明細（契約書と車両の中間テーブル）
+model LeaseContractLine {
+  id              String         @id @default(cuid())
+  contractId      String
+  contract        LeaseContract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  vehicleId       String
+  vehicle         Vehicle        @relation(fields: [vehicleId], references: [id])
+  startDate       DateTime
+  endDate         DateTime
+  monthlyAmount   Int
+  note            String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([contractId, vehicleId])
+  @@index([contractId])
+  @@index([vehicleId])
+}
+
+/// 点検・整備記録
+model VehicleInspection {
+  id             String         @id @default(cuid())
+  vehicleId      String
+  vehicle        Vehicle        @relation(fields: [vehicleId], references: [id])
+  inspectionType InspectionType
+  scheduledDate  DateTime
+  completedDate  DateTime?
+  isCompleted    Boolean        @default(false)
+  note           String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([vehicleId])
+  @@index([inspectionType])
+  @@index([scheduledDate])
+  @@index([isCompleted])
+}
+
+/// 駐車場
+model ParkingLot {
+  id           String        @id @default(cuid())
+  officeId     String
+  office       Office        @relation(fields: [officeId], references: [id])
+  name         String
+  canvasWidth  Int           @default(800)
+  canvasHeight Int           @default(600)
+  annotations  Json?
+  spots        ParkingSpot[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([officeId, name])
+  @@index([officeId])
+}
+
+/// 駐車枠
+model ParkingSpot {
+  id           String     @id @default(cuid())
+  parkingLotId String
+  parkingLot   ParkingLot @relation(fields: [parkingLotId], references: [id], onDelete: Cascade)
+  spotNumber   String
+  x            Float
+  y            Float
+  width        Float
+  height       Float
+  rotation     Float      @default(0)
+  vehicle      Vehicle?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([parkingLotId, spotNumber])
+}
+
+// ============================================================
+// 見積書管理
+// ============================================================
+
+/// 見積書
+model Quotation {
+  id              String          @id @default(cuid())
+  quotationCode   String          @unique  /// QT-NNNNN 形式、サービス層で自動採番
+  accountId       String
+  account         Account         @relation(fields: [accountId], references: [id])
+  status          QuotationStatus @default(DRAFT)
+  title           String?         /// 見積書タイトル
+  customerName    String          /// 宛名（Account.accountName の初期コピー）
+  vehicleClassId  String?
+  vehicleClass    VehicleClass?   @relation(fields: [vehicleClassId], references: [id])
+  pickupDate      DateTime?
+  returnDate      DateTime?
+  pickupOfficeId  String?
+  pickupOffice    Office?         @relation("quotationPickup", fields: [pickupOfficeId], references: [id])
+  returnOfficeId  String?
+  returnOffice    Office?         @relation("quotationReturn", fields: [returnOfficeId], references: [id])
+  amount          Int             /// 税抜金額
+  taxAmount       Int             /// 消費税額
+  totalAmount     Int             /// 税込合計
+  validUntil      DateTime?       /// 有効期限
+  note            String?
+  reservationId   String?         @unique
+  reservation     Reservation?    @relation(fields: [reservationId], references: [id])
+  lines           QuotationLine[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([accountId])
+  @@index([status])
+}
+
+/// 見積書明細行
+model QuotationLine {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  sortOrder   Int       @default(0)
+  description String    /// 品名・摘要
+  quantity    Float     @default(1)
+  unitPrice   Int       /// 単価
+  amount      Int       /// 金額（quantity × unitPrice）
+  taxRate     Float     @default(0.10) /// 税率
+  taxAmount   Int       /// 消費税額
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([quotationId])
+}
+
+// ============================================================
+// 貸渡管理（予約・出発・帰着）
+// ============================================================
+
+/// 車両クラス（軽自動車、コンパクト、セダン等）
+model VehicleClass {
+  id           String        @id @default(cuid())
+  classCode    String        @unique  /// CL-00001 形式、サービス層で自動採番
+  className    String        @unique
+  description  String?
+  sortOrder    Int           @default(0)
+  vehicles     Vehicle[]
+  ratePlans    RatePlan[]
+  reservations Reservation[]
+  quotations   Quotation[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+/// 予約
+model Reservation {
+  id                String            @id @default(cuid())
+  reservationCode   String            @unique  /// RS-00001 形式、サービス層で自動採番
+  status            ReservationStatus @default(RESERVED)
+  vehicleClassId    String
+  vehicleClass      VehicleClass      @relation(fields: [vehicleClassId], references: [id])
+  vehicleId         String?
+  vehicle           Vehicle?          @relation(fields: [vehicleId], references: [id])
+  customerName      String
+  customerNameKana  String
+  customerPhone     String
+  customerEmail     String?
+  pickupDate        DateTime          /// 出発予定日時
+  returnDate        DateTime          /// 帰着予定日時
+  actualPickupDate  DateTime?         /// 実出発日時
+  actualReturnDate  DateTime?         /// 実帰着日時
+  pickupOfficeId    String
+  pickupOffice      Office            @relation("pickupOffice", fields: [pickupOfficeId], references: [id])
+  returnOfficeId    String
+  returnOffice      Office            @relation("returnOffice", fields: [returnOfficeId], references: [id])
+  departureOdometer Int?              /// 出発時走行距離
+  returnOdometer    Int?              /// 帰着時走行距離
+  fuelLevelAtReturn String?           /// 帰着時燃料レベル
+  estimatedAmount   Int?              /// 見積金額
+  actualAmount      Int?              /// 精算金額
+  options           ReservationOption[]
+  note              String?
+  customerCode      String?           /// 顧客コード
+  entityType        Int?              /// 1=個人, 2=法人
+  companyCode       String?           /// 法人コード
+  channel           String?           /// 販売チャネル（Web/電話/来店等）
+  taxAmount         Int?              /// 消費税額
+  settledAt         DateTime?         /// 精算完了日時
+  revenueDate       DateTime?         /// 売上計上日（個人=settledAt、法人=Invoice.dueDate）
+  approvalStatus    ApprovalStatus    @default(APPROVED)
+  approvedById      String?
+  approvedAt        DateTime?
+  approvalComment   String?
+  accountId         String?           /// 取引先ID
+  account           Account?          @relation(fields: [accountId], references: [id])
+  invoices          Invoice[]
+  quotation         Quotation?
+  allocations       PaymentAllocation[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([status])
+  @@index([vehicleClassId])
+  @@index([vehicleId])
+  @@index([pickupDate])
+  @@index([returnDate])
+  @@index([pickupOfficeId])
+  @@index([returnOfficeId])
+  @@index([customerName])
+  @@index([approvalStatus])
+  @@index([revenueDate])
+  @@index([entityType])
+  @@index([channel])
+  @@index([accountId])
+}
+
+/// 料金プラン
+model RatePlan {
+  id                  String       @id @default(cuid())
+  vehicleClassId      String
+  vehicleClass        VehicleClass @relation(fields: [vehicleClassId], references: [id])
+  planName            String
+  rateType            RateType
+  basePrice           Int          /// 基本料金
+  additionalHourPrice Int          @default(0) /// 超過1時間あたり
+  insurancePrice      Int          @default(0) /// 免責補償料/1日
+  validFrom           DateTime
+  validTo             DateTime?
+  isActive            Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([vehicleClassId])
+  @@index([isActive])
+  @@index([validFrom])
+}
+
+/// レンタルオプション（チャイルドシート、ETC等）
+model RateOption {
+  id                 String              @id @default(cuid())
+  optionName         String              @unique
+  price              Int
+  isActive           Boolean             @default(true)
+  reservationOptions ReservationOption[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+/// 予約オプション（予約とオプションの中間テーブル）
+model ReservationOption {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  optionId      String
+  option        RateOption  @relation(fields: [optionId], references: [id])
+  quantity      Int         @default(1)
+  unitPrice     Int         /// 適用時点の単価スナップショット
+  createdAt     DateTime    @default(now())
+
+  @@unique([reservationId, optionId])
+  @@index([reservationId])
+  @@index([optionId])
+}
+
+/// 請求書
+model Invoice {
+  id              String              @id @default(cuid())
+  invoiceNumber   String              @unique  /// IV-00001 形式、サービス層で自動採番
+  reservationId   String
+  reservation     Reservation         @relation(fields: [reservationId], references: [id])
+  customerName    String
+  customerCode    String?
+  companyCode     String?
+  issueDate       DateTime            /// 発行日
+  dueDate         DateTime            /// 支払期日（= 法人の売上見込日）
+  amount          Int                 /// 請求金額（税抜）
+  taxAmount       Int                 /// 消費税額
+  totalAmount     Int                 /// 合計金額（税込）
+  status          InvoiceStatus       @default(DRAFT)
+  paidAt          DateTime?           /// 入金確認日
+  accountId       String?             /// 取引先ID
+  account         Account?            @relation(fields: [accountId], references: [id])
+  allocations     PaymentAllocation[]
+  lines           InvoiceLine[]
+  note            String?
+  externalId      String?             @unique  /// マネーフォワード側の請求書ID
+  externalUrl     String?             /// マネーフォワード側の請求書URL
+  externalStatus  String?             /// マネーフォワード側の最新ステータス
+  syncedAt        DateTime?           /// 最終同期日時
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([reservationId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([companyCode])
+  @@index([externalId])
+  @@index([accountId])
+}
+
+/// 請求書明細行
+model InvoiceLine {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  sortOrder   Int      @default(0)
+  description String   /// 品名・摘要
+  quantity    Float    @default(1)
+  unitPrice   Int      /// 単価
+  amount      Int      /// 金額（quantity × unitPrice）
+  taxRate     Float    @default(0.10) /// 税率
+  taxAmount   Int      /// 消費税額
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([invoiceId])
+}
+
+// ============================================================
+// 入金管理
+// ============================================================
+
+/// 決済端末マスタ
+model PaymentTerminal {
+  id           String         @id @default(cuid())
+  terminalCode String         @unique
+  terminalName String
+  terminalType TerminalType
+  provider     String?
+  modelName    String?
+  serialNumber String?        @unique
+  officeId     String
+  office       Office         @relation(fields: [officeId], references: [id])
+  status       TerminalStatus @default(ACTIVE)
+  payments     Payment[]
+  note         String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([officeId])
+  @@index([status])
+}
+
+/// 入金記録
+model Payment {
+  id              String              @id @default(cuid())
+  paymentNumber   String              @unique
+  paymentDate     DateTime
+  amount          Int
+  paymentCategory PaymentCategory
+  paymentProvider String?
+  payerName       String
+  terminalId      String?
+  terminal        PaymentTerminal?    @relation(fields: [terminalId], references: [id])
+  externalId      String?             @unique
+  note            String?
+  status          PaymentStatus       @default(UNALLOCATED)
+  allocations     PaymentAllocation[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([paymentDate])
+  @@index([status])
+  @@index([payerName])
+  @@index([paymentCategory])
+  @@index([terminalId])
+}
+
+/// 消込明細（入金と予約/請求書の中間テーブル）
+model PaymentAllocation {
+  id              String       @id @default(cuid())
+  paymentId       String
+  payment         Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  reservationId   String
+  reservation     Reservation  @relation(fields: [reservationId], references: [id])
+  invoiceId       String?
+  invoice         Invoice?     @relation(fields: [invoiceId], references: [id])
+  allocatedAmount Int
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([paymentId, reservationId])
+  @@index([reservationId])
+  @@index([invoiceId])
+}

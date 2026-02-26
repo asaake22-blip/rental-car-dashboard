@@ -1,0 +1,16 @@
+runtime: nodejs22
+instance_class: F2
+
+automatic_scaling:
+  min_instances: 0
+  max_instances: 2
+
+env_variables:
+  NODE_ENV: production
+  DATABASE_URL: "postgresql://USER:PASSWORD@localhost/DB_NAME?host=/cloudsql/PROJECT:REGION:INSTANCE"
+  API_KEY: "your-production-api-key"
+  BASIC_AUTH_USER: "admin"
+  BASIC_AUTH_PASSWORD: "your-password"
+  # SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/..."
+  # MONEYFORWARD_API_KEY: "..."
+  # MONEYFORWARD_BASE_URL: "https://invoice.moneyforward.com"

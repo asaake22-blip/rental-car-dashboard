@@ -1,0 +1,60 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+# claude code (設定ファイルのみ除外、agents/skills は管理対象)
+.claude/settings.local.json
+.claude/plans/
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# GAE deploy (秘密情報を含むため git 管理外)
+app.yaml
+!app.yaml.example
+
+# vercel
+.vercel
+
+# data files (実データはgit管理外)
+*.xlsx
+*.xls
+*.csv
+!prisma/seed-data/
+
+# docs (機密情報を含む可能性があるため git 管理外)
+/docs/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/src/generated/prisma

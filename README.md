@@ -26,26 +26,6 @@
 
 このプロジェクトは**ポートフォリオ用のデモアプリケーション**です。実際の業務データは含まれておらず、すべてダミーデータで動作します。
 
-- 認証機能のコードは実装されていますが、デモ環境では無効化されています
-- 本番環境で使用する場合は、[SECURITY.md](SECURITY.md) を参照してください
-
-## 🔒 セキュリティに関する注意
-
-**本番環境にデプロイする場合は、以下を実施してください：**
-
-1. **認証の有効化**
-   - `.env` に `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` を設定
-   - `.env` に `API_KEY` をランダムな文字列（64文字以上推奨）で設定
-
-2. **データベース認証情報の変更**
-   - `.env` の `DATABASE_URL` に含まれるパスワードを変更
-   - デフォルトのパスワード（`rental_db_password`）は開発用です
-
-3. **機密情報の管理**
-   - `.env` ファイルは絶対に公開リポジトリにコミットしないでください
-   - Git 履歴に認証情報が含まれていないか確認してください
-
-詳細は [SECURITY.md](SECURITY.md) を参照してください。
 
 ## セットアップ
 
@@ -173,7 +153,7 @@ rental-car/
 - docker-compose（PostgreSQL 16、ポート5433）
 - Prisma 7 スキーマ（29モデル + 16 enum）+ マイグレーション
 - サイドバー付きダッシュボードレイアウト
-- 認証スタブ（将来 Firebase Auth 対応）
+- 認証スタブ
 
 ### データ管理
 - faker.js によるダミーデータ生成（業務リアリティ重視、~15,000件）
@@ -190,7 +170,6 @@ rental-car/
 ### 取引先管理
 - **取引先マスタ CRUD**（取引先コード自動採番 `AC-00001`、法人/個人区分）
 - 支払条件管理（締日・支払月オフセット・支払日 → dueDate 自動計算）
-- MoneyForward パートナー連携（`mfPartnerId` / `mfPartnerCode`）
 - 取引先詳細に関連見積書・請求書・予約一覧
 
 ### 見積書管理
@@ -203,7 +182,6 @@ rental-car/
 - **請求書 CRUD**（請求書番号自動採番 `IV-00001`、ステータス: 下書き→発行→入金済/延滞）
 - **明細行エディタ**（見積書と同じ共通コンポーネント）
 - 取引先選択 + 消込情報セクション（入金リンク・消込金額・残額サマリ）
-- MoneyForward 請求書連携（`invoice.issued` イベントで自動連携）
 
 ### 入金管理・決済端末
 - **入金管理**（N:N 消込構造 — 1入金→複数予約/請求書消込）
@@ -278,12 +256,11 @@ rental-car/
 | 管理 | ImportHistory | インポート履歴 |
 | 管理 | ExclusionRule | 除外条件 |
 
-詳細なスキーマは [prisma/schema.prisma](prisma/schema.prisma) を参照。
 
 ## 認証・セキュリティ
 
 ### Web UI（暫定 Basic 認証）
-- アプリ内認証は未実装（`src/lib/auth.ts` にスタブ。将来 Firebase Auth 対応予定）
+- アプリ内認証は未実装
 - デプロイ環境では **Basic 認証**（`src/middleware.ts`）で保護
   - 環境変数 `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` で制御
   - 未設定時はスキップ（ローカル開発に影響なし）
@@ -295,7 +272,6 @@ rental-car/
 2. **Basic 認証ヘッダー**: ブラウザが送信する場合に受け入れ
 3. **セッション Cookie**: middleware で発行された `__session` Cookie
 
-全 API Route が `withAuth()` で保護済み。
 
 ### セキュリティ
 - `next.config.ts` で `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` 等を設定
@@ -356,11 +332,3 @@ GAE は以下の順序でビルドする:
 | `MONEYFORWARD_API_KEY` | 任意 | MF 請求書 API キー |
 | `MONEYFORWARD_BASE_URL` | 任意 | MF API ベース URL |
 | `NEXT_PUBLIC_MF_BASE_URL` | 任意 | MF 画面リンク用 URL |
-
-### 秘密情報の管理
-
-- `app.yaml` に環境変数として直接記載（`.gitignore` 対象）
-- `app.yaml.example` をテンプレートとしてコミット（秘密情報なし）
-
-詳細: [docs/deployment-gae.md](docs/deployment-gae.md)
-
